@@ -14,23 +14,27 @@ class ExperienceReplay(object):
         self.memory = list()
         self.discount = discount
 
-    def remember(self, states, game_over):
-        # memory[i] = [[state_t, action_t, reward_t, state_t+1], game_over?]
-        self.memory.append( [states, game_over] )
+    def remember(self, frame_index, action, reward, game_over):
+        # memory[i] = [state_t, action, reward, state_t+1, game_over]
+        nidx = frame_index
+        cidx = nidx-1
+
+        self.memory.append( [cidx, action, reward, nidx, game_over] )
         if len(self.memory) > self.max_memory:
             del self.memory[0]
 
     def get_batch(self, model, batch_size=10):
         len_memory = len(self.memory)
         num_actions = model.output_shape[-1]
-        env_dim = self.memory[0][0][0].shape[1]
+        env_dim = game.shared_visual_memory[0].shape[1]
         inputs = np.zeros((min(len_memory, batch_size), env_dim)).astype(np.float32)
         targets = np.zeros((inputs.shape[0], num_actions)).astype(np.float32)
 
         for i, idx in enumerate(np.random.randint(0, len_memory,
                                                   size=inputs.shape[0])):
-            state_t, action_t, reward_t, state_tp1 = self.memory[idx][0]
-            game_over = self.memory[idx][1]
+            cidx, action_t, reward_t, nidx, game_over = self.memory[idx]
+            state_t = game.shared_visual_memory[cidx]
+            state_tp1 = game.shared_visual_memory[nidx]
 
             inputs[i:i+1] = state_t
             # There should be no target values for actions not taken.
@@ -59,12 +63,12 @@ class AIPlayer(Player):
         self.exp_replay = ExperienceReplay(max_memory=max_memory)
 
     def reset(self):
-        loss = 0
-        self.exp_replay = ExperienceReplay(max_memory=max_memory)
+        self.loss = 0
+        self.exp_replay = ExperienceReplay( max_memory=max_memory)
 
     def decide_action(self):
         # we need a few frames to get some visual history
-        if type(game.screen_r_prev) is int:
+        if game.shared_visual_memory.frame_index() <=1:
             return PlayerActions.stay
         else:
             # explore the action space with an epsilon random move every now and again
@@ -72,7 +76,7 @@ class AIPlayer(Player):
                 action = np.random.randint(-1, 2, size=1)
                 return PlayerActions(action[0])
             else:
-                q = model.predict(game.screen_r_prev)
+                q = model.predict(game.shared_visual_memory[game.shared_visual_memory.frame_index()])
                 action = np.argmax(q[0])-1
 
                 return PlayerActions(action)
@@ -83,9 +87,11 @@ class AIPlayer(Player):
         if self.game.game_in_progress:
            super().perform_action(action)
 
-        if type(game.screen_r_prev) is not int:
+        frame_index = game.shared_visual_memory.frame_index()
+
+        if(game.shared_visual_memory.frame_index() >= 2):
             # store experience
-            self.exp_replay.remember([game.screen_r_prev, action.value+1, self.scored_this_frame, game.screen_r], self.game.game_over_flag)
+            self.exp_replay.remember( frame_index,(action.value)+1, self.scored_this_frame, self.game.game_over_flag)
             self.scored_this_frame = 0
 
             inputs, targets = self.exp_replay.get_batch(model, batch_size=batch_size)
@@ -123,6 +129,7 @@ if __name__ == '__main__':
     # If you want to continue training from a previous model, just uncomment the line bellow
     # model.load_weights("qpong_model.h5")
 
+
     p1 = AIPlayer(1)
     p2 = AIPlayer(2)
 
@@ -133,9 +140,12 @@ if __name__ == '__main__':
         sge.game.start()
         # game is over
         print( "P1 Score {} P2 Score {}".format(game.player1.score, game.player2.score))
-        print("Epoch {:03d}/999 | Loss P1 {:.4f} | Loss P2 {:.4f}".format(e, game.player1.loss, game.player2.loss))
-        p1.reset()
-        p2.reset()
+        if isinstance(p1, AIPlayer) and isinstance(p2, AIPlayer):
+            print("Epoch {:03d}/999 | Loss P1 {:.4f} | Loss P2 {:.4f}".format(e, game.player1.loss, game.player2.loss))
+        if p1 is AIPlayer:
+            p1.reset()
+        if p2 is AIPlayer:
+            p2.reset()
 
 
     print('exit')

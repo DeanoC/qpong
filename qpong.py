@@ -28,21 +28,47 @@ PADDLE_LENGTH = 16
 BALL_START_SPEED = 2
 BALL_ACCELERATION = 0.2
 BALL_MAX_SPEED = 15
-POINTS_TO_WIN = 10
+POINTS_TO_WIN = 4
 TEXT_OFFSET = 2
 GAME_OVER_WAIT_FRAMES = 20
 
+class SharedVisualMemory:
+    """To save memory multiple AI share the visual memory system
+    """
+    def __init__(self, max_memory: int = 30):
+        self.max_memory = max_memory
+        self.memory = list()
+        self.start_index = 0
+        self.curr_index = 0
+
+    def frame_index(self):
+        return self.curr_index
+
+    def remember(self, viz ):
+        self.memory.append(viz)
+        self.curr_index += 1
+
+        if(len(self.memory) > self.max_memory):
+            del self.memory[0]
+            self.start_index+=1
+
+        return self.curr_index
+
+    def __getitem__(self, item):
+        if item >= self.start_index:
+            return self.memory[item - self.start_index - 1]
+        else:
+            return self.memory[0]
+
 class Game(sge.dsp.Game):
-    screen_r_prev = 0
-    screen_r = 0
     width_scalar = 1
     height_scalar = 1
     game_over_flag = False
     wait_counter = 0
     game_in_progress = True
+    shared_visual_memory = SharedVisualMemory(max_memory=30)
 
     def event_step(self, time_passed, delta_mult):
-        self.project_sprite(self.hud_sprite, 0, self.width / 2, 0)
         self.observe_world()
 
         if self.game_over_flag == True:
@@ -60,11 +86,9 @@ class Game(sge.dsp.Game):
         return screen.reshape((1,-1))
 
     def observe_world(self):
-        self.screen_r_prev = self.screen_r
-        self.screen_r = self._observe()
+        self.shared_visual_memory.remember(self._observe())
 
     def event_key_press(self, key, char):
-
         if key == 'f8':
             sge.gfx.Sprite.from_screenshot().save('screenshot.jpg')
         elif key == 'f11':
@@ -215,8 +239,6 @@ class Ball(sge.dsp.Object):
             # Game Over!
             self.xvelocity = 0
             self.yvelocity = 0
-            self.game.hud_sprite.draw_clear()
-            x = self.game.hud_sprite.width / 2
             self.game.game_over_flag = True
 
 
@@ -236,15 +258,12 @@ class Pong(Game):
                                  fill=sge.gfx.Color("white"))
         self.ball_sprite.draw_rectangle(0, 0, self.ball_sprite.width, self.ball_sprite.height,
                                fill=sge.gfx.Color("white"))
-        self.hud_sprite = sge.gfx.Sprite(width=160*self.x_scalar, height=20*self.y_scalar, origin_x=80*self.x_scalar, origin_y=0)
 
         # Load backgrounds
         layers = [sge.gfx.BackgroundLayer(self.paddle_sprite, sge.game.width / 2, 0, -10000,
                                       repeat_up=True, repeat_down=True)]
         self.background = sge.gfx.Background(layers, sge.gfx.Color("black"))
 
-        # Load fonts
-        self.hud_font = sge.gfx.Font("Droid Sans Mono", size=10)
         sge.game.mouse.visible = False
 
         self.player1.set_game(self)
@@ -259,25 +278,8 @@ class Pong(Game):
 
     def refresh_hud(self):
         pass
-        # This fixes the HUD sprite so that it displays the correct score.
-        self.hud_sprite.draw_clear()
-        x = self.hud_sprite.width / 2
-        self.hud_sprite.draw_text(self.hud_font, str(self.player1.score), x - TEXT_OFFSET,
-                         0, color=sge.gfx.Color("white"),
-                         halign="right", valign="top")
-        self.hud_sprite.draw_text(self.hud_font, str(self.player2.score), x + TEXT_OFFSET,
-                         0, color=sge.gfx.Color("white"),
-                         halign="left", valign="top")
+
     def game_over_wait(self):
-        pass
-        p1text = "WIN" if self.player1.score > self.player2.score else "LOSE"
-        p2text = "WIN" if self.player2.score > self.player1.score else "LOSE"
-        self.hud_sprite.draw_text(self.hud_font, p1text, self.ball.x - TEXT_OFFSET,
-                                       TEXT_OFFSET, color=sge.gfx.Color("white"),
-                                       halign="right", valign="top")
-        self.hud_sprite.draw_text(self.hud_font, p2text, self.ball.x + TEXT_OFFSET,
-                                       TEXT_OFFSET, color=sge.gfx.Color("white"),
-                                       halign="left", valign="top")
         game_in_progress = False
 
     def game_over(self):
