@@ -13,13 +13,11 @@
 # along with this software. If not, see
 # <http://creativecommons.org/publicdomain/zero/1.0/>.
 
-import os
 import random
 from enum import Enum
 
-import sge
 import pygame
-import pygame.surfarray as surfarray
+import sge
 
 PADDLE_XOFFSET = 8
 PADDLE_SPEED = 4
@@ -221,6 +219,8 @@ class Ball(sge.dsp.Object):
                                  BALL_MAX_SPEED) * other.hit_direction
             self.yvelocity += (self.y - other.y) * PADDLE_VERTICAL_FORCE
 
+            self.game.bounce_count += 1
+
     def serve(self, direction=None):
         self.game.refresh_hud()
 
@@ -229,6 +229,7 @@ class Ball(sge.dsp.Object):
 
         self.x = self.xstart
         self.y = self.ystart
+        self.game.bounce_count = 0
 
         if (self.game.player1.score < POINTS_TO_WIN and
                 self.game.player2.score < POINTS_TO_WIN):
@@ -265,6 +266,8 @@ class Pong(Game):
         self.background = sge.gfx.Background(layers, sge.gfx.Color("black"))
 
         sge.game.mouse.visible = False
+
+        self.bounce_count = 0
 
         self.player1.set_game(self)
         self.player2.set_game(self)

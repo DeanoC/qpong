@@ -1,12 +1,14 @@
-import sge
 import json
-import math
+from os import path
+
 import numpy as np
-from keras.models import Sequential
+import sge
 from keras.layers.core import Dense
+from keras.models import Sequential
 from keras.optimizers import sgd
 
-from qpong import Pong, Game, Player, Ball, HumanPlayer, Player,PlayerActions
+from qpong import Pong, Player, PlayerActions
+
 
 class ExperienceReplay(object):
     def __init__(self, max_memory=30, discount=.9):
@@ -101,20 +103,24 @@ class AIPlayer(Player):
         super().event_step(time_passed, delta_mult)
 
     def scored(self, me = True):
+        super().scored(me)
+
         if me:
+            # no gain if we nobody was involved
+            if game.bounce_count == 0:
+                return
+
             self.scored_this_frame = 1
         else:
             self.scored_this_frame = -1
-
-        super().scored(me)
 
 if __name__ == '__main__':
     # parameters
     epsilon = .1  # exploration
     num_actions = 3  # [move_left, stay, move_right]
-    epoch = 1000
-    max_memory = 20
-    batch_size = 10
+    epoch = 100
+    max_memory = 100
+    batch_size = 20
 
     game_width = 80
     game_height = 60
@@ -127,8 +133,8 @@ if __name__ == '__main__':
     model.compile(sgd(lr=.2), "mse")
 
     # If you want to continue training from a previous model, just uncomment the line bellow
-    # model.load_weights("qpong_model.h5")
-
+    if path.isfile("qpong_ai.h5"):
+        model.load_weights("qpong_ai.h5")
 
     p1 = AIPlayer(1)
     p2 = AIPlayer(2)
@@ -147,6 +153,7 @@ if __name__ == '__main__':
         if p2 is AIPlayer:
             p2.reset()
 
-
-    print('exit')
-
+    # Save trained model weights and architecture, this will be used by the visualization code
+    model.save_weights("qpong_ai.h5", overwrite=True)
+    with open("qpong_ai.json", "w") as outfile:
+        json.dump(model.to_json(), outfile)
