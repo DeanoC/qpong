@@ -7,8 +7,8 @@ from keras.layers.core import Dense
 from keras.models import Sequential
 from keras.optimizers import sgd
 
-from qgame import Player, PlayerActions, HumanPlayer
-from qpong import Pong
+from qgame import Player, PlayerActions
+from qsquash import Squash
 
 
 class ExperienceReplay(object):
@@ -20,9 +20,9 @@ class ExperienceReplay(object):
     def remember(self, frame_index, action, reward, game_over):
         # memory[i] = [state_t, action, reward, state_t+1, game_over]
         nidx = frame_index
-        cidx = nidx-1
+        cidx = nidx - 1
 
-        self.memory.append( [cidx, action, reward, nidx, game_over] )
+        self.memory.append([cidx, action, reward, nidx, game_over])
         if len(self.memory) > self.max_memory:
             del self.memory[0]
 
@@ -39,7 +39,7 @@ class ExperienceReplay(object):
             state_t = game.shared_visual_memory[cidx]
             state_tp1 = game.shared_visual_memory[nidx]
 
-            inputs[i:i+1] = state_t
+            inputs[i:i + 1] = state_t
             # There should be no target values for actions not taken.
             # Thou shalt not correct actions not taken #deep
             last_predict = model.predict(state_t)[0]
@@ -67,11 +67,11 @@ class AIPlayer(Player):
 
     def reset(self):
         self.loss = 0
-        self.exp_replay = ExperienceReplay( max_memory=max_memory)
+        self.exp_replay = ExperienceReplay(max_memory=max_memory)
 
     def decide_action(self):
         # we need a few frames to get some visual history
-        if game.shared_visual_memory.frame_index() <=1:
+        if game.shared_visual_memory.frame_index() <= 1:
             return PlayerActions.stay
         else:
             # explore the action space with an epsilon random move every now and again
@@ -80,7 +80,7 @@ class AIPlayer(Player):
                 return PlayerActions(action[0])
             else:
                 q = model.predict(game.shared_visual_memory[game.shared_visual_memory.frame_index()])
-                action = np.argmax(q[0])-1
+                action = np.argmax(q[0]) - 1
 
                 return PlayerActions(action)
 
@@ -91,9 +91,9 @@ class AIPlayer(Player):
 
         frame_index = game.shared_visual_memory.frame_index()
 
-        if(game.shared_visual_memory.frame_index() >= 2):
+        if (game.shared_visual_memory.frame_index() >= 2):
             # store experience
-            self.exp_replay.remember( frame_index,(action.value)+1, self.scored_this_frame, self.game.game_over_flag)
+            self.exp_replay.remember(frame_index, (action.value) + 1, self.score / 10, self.game.game_over_flag)
             self.scored_this_frame = 0
 
             inputs, targets = self.exp_replay.get_batch(model, batch_size=batch_size)
@@ -102,16 +102,14 @@ class AIPlayer(Player):
 
         super().event_step(time_passed, delta_mult)
 
-    def scored(self, me = True):
-        super().scored(me)
+    def scored(self, me=True):
+        # single player game, i can only lose points :(
+        self.scored_this_frame = -1
+        self.score -= 1
 
-        if me:
-            # no gain if we nobody was involved
-            if game.bounce_count == 0:
-                return
-            self.scored_this_frame = 1
-        else:
-            self.scored_this_frame = -1
+    def collide_with_ball(self):
+        self.score += 5
+
 
 if __name__ == '__main__':
     # parameters
@@ -123,36 +121,34 @@ if __name__ == '__main__':
 
     game_width = 80
     game_height = 60
-    hidden_size = 100
+    hidden_size = 500
+    total_score = 0
 
     model = Sequential()
-    model.add(Dense(hidden_size, input_dim = game_width*game_height, activation = 'relu', init = 'uniform'))
-    model.add(Dense(hidden_size, activation = 'relu',init = 'uniform'))
-    model.add(Dense(num_actions, init = 'uniform'))
+    model.add(Dense(hidden_size, input_dim=game_width * game_height, activation='relu', init='uniform'))
+    model.add(Dense(hidden_size, activation='relu', init='uniform'))
+    model.add(Dense(num_actions, init='uniform'))
     model.compile(sgd(lr=.2), "mse")
 
     # If you want to continue training from a previous model, just uncomment the line bellow
-    if path.isfile("qpong_ai.h5"):
-        model.load_weights("qpong_ai.h5")
+    if path.isfile("qsquash_ai.h5"):
+        model.load_weights("qsquash_ai.h5")
 
-    p1 = HumanPlayer(1)
-    p2 = AIPlayer(2)
+    p1 = AIPlayer(1)
 
     for e in range(epoch):
-        game = Pong(p1, p2, game_width, game_height)
+        game = Squash(p1, game_width, game_height)
         game.fullscreen = False
 
         sge.game.start()
-        # game is over
-        print( "P1 Score {} P2 Score {}".format(game.player1.score, game.player2.score))
-        if isinstance(p1, AIPlayer) and isinstance(p2, AIPlayer):
-            print("Epoch {:03d}/999 | Loss P1 {:.4f} | Loss P2 {:.4f}".format(e, game.player1.loss, game.player2.loss))
+        if isinstance(p1, AIPlayer):
+            print("Epoch {:03d}/99 | Loss P1 {:.4f} Score {}".format(e, game.player1.loss, game.player1.score))
+            total_score += game.player1.score
+        print("Mean Score {}".format(total_score / (e + 1)))
         if p1 is AIPlayer:
             p1.reset()
-        if p2 is AIPlayer:
-            p2.reset()
 
     # Save trained model weights and architecture, this will be used by the visualization code
-    model.save_weights("qpong_ai.h5", overwrite=True)
-    with open("qpong_ai.json", "w") as outfile:
+    model.save_weights("qsquash_ai.h5", overwrite=True)
+    with open("qsquash_ai.json", "w") as outfile:
         json.dump(model.to_json(), outfile)
