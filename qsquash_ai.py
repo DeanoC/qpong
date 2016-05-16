@@ -116,12 +116,12 @@ if __name__ == '__main__':
     epsilon = .2  # exploration
     num_actions = 3  # [move_left, stay, move_right]
     epoch = 100
-    max_memory = 100
-    batch_size = 20
+    max_memory = 300
+    batch_size = 50
 
     game_width = 80
     game_height = 60
-    hidden_size = 500
+    hidden_size = 50
     total_score = 0
 
     model = Sequential()
